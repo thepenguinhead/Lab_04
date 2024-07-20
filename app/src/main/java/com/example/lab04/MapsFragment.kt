@@ -34,6 +34,7 @@ class MapsFragment : Fragment(), OnMapReadyCallback {
     private lateinit var binding: FragmentMapsBinding
     private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
     private lateinit var sharedViewModel: SharedViewModel
+    private var lastKnownLocation: LatLng? = null
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -65,13 +66,46 @@ class MapsFragment : Fragment(), OnMapReadyCallback {
 
         val button: Button = view.findViewById(R.id.button_parked_here)
         button.setOnClickListener {
-            getLastLocation()
+            if (lastKnownLocation != null) {
+                moveCarIcon(lastKnownLocation!!)
+            } else {
+                getLastLocation()
+            }
         }
     }
 
     override fun onMapReady(googleMap: GoogleMap) {
         mMap = googleMap
         requestLocationPermission()
+
+        // Set a map click listener
+        mMap.setOnMapClickListener { latLng ->
+            moveCarIcon(latLng)
+            lastKnownLocation = latLng
+        }
+    }
+
+    private fun moveCarIcon(latLng: LatLng) {
+        // Clear the map of existing markers
+        mMap.clear()
+
+        // Convert vector drawable to bitmap
+        val carBitmap = BitmapHelper.vectorToBitmap(requireContext(), R.drawable.ic_car)
+        val carIcon = carBitmap?.let { BitmapDescriptorFactory.fromBitmap(it) }
+
+        // Add the marker
+        mMap.addMarker(
+            MarkerOptions()
+                .position(latLng)
+                .title("Parked Location")
+                .icon(carIcon)
+        )
+
+        // Move the camera to the new location
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 15f))
+
+        // Update the shared view model with the new location
+        sharedViewModel.setParkingLocation("${latLng.latitude}, ${latLng.longitude}")
     }
 
     private fun hasLocationPermission() =
@@ -103,6 +137,7 @@ class MapsFragment : Fragment(), OnMapReadyCallback {
         fusedLocationProviderClient.lastLocation.addOnSuccessListener { location: Location? ->
             location?.let {
                 val currentLocation = LatLng(it.latitude, it.longitude)
+                lastKnownLocation = currentLocation
 
                 // Remove the previous marker if it exists
                 mMap.clear()
